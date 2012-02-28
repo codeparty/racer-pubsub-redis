@@ -76,7 +76,11 @@ PubSubRedis:: =
     @_pubClient.end()
     @_subClient.end()
 
-  subscribe: (subscriberId, paths, callback, method = 'psubscribe') ->
+  publish: (path, message) ->
+    path = @_prefixWithNamespace path
+    @_pubClient.publish path, JSON.stringify message
+
+  subscribe: (subscriberId, paths, callback, isLiteral) ->
     return if subscriberId is undefined
 
     subs = @_subs
@@ -92,16 +96,15 @@ PubSubRedis:: =
       ss = subscriberSubs[subscriberId] ||= {}
       ss[path] = re
 
-    callbackQueue = switch method
-      when 'psubscribe' then @_pendingPsubscribe
-      when 'subscribe'  then @_pendingSubscribe
+    if isLiteral
+      method = 'subscribe'
+      callbackQueue = @_pendingSubscribe
+    else
+      method = 'psubscribe'
+      callbackQueue = @_pendingPsubscribe
     handlePaths toAdd, callbackQueue, @_subClient, method, callback
 
-  publish: (path, message) ->
-    path = @_prefixWithNamespace path
-    @_pubClient.publish path, JSON.stringify message
-
-  unsubscribe: (subscriberId, paths, callback, method = 'punsubscribe') ->
+  unsubscribe: (subscriberId, paths, callback, isLiteral) ->
     return if subscriberId is undefined
 
     # For signature: unsubscribe(subscriberId, callback)
@@ -123,9 +126,12 @@ PubSubRedis:: =
         toRemove.push path unless hasKeys pathSubs
       delete ss[path] if ss = subscriberSubs[subscriberId]
 
-    callbackQueue = switch method
-      when 'punsubscribe' then @_pendingPunsubscribe
-      when 'unsubscribe'  then @_pendingUnsubscribe
+    if isLiteral
+      method = 'subscribe'
+      callbackQueue = @_pendingSubscribe
+    else
+      method = 'psubscribe'
+      callbackQueue = @_pendingPsubscribe
     handlePaths toRemove, callbackQueue,  @_subClient, method, callback
 
   hasSubscriptions: (subscriberId) -> subscriberId of @_subscriberSubs
