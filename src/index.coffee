@@ -139,7 +139,8 @@ PubSubRedis:: =
         delete s[subscriberId]
         unless hasKeys s
           toRemove.push prefixed
-          @emit 'noSubscribers', @_unprefix prefixed
+          @emit 'noSubscribers',
+            if isLiteral then @_unprefix(prefixed) else @_unprefix(prefixed)[0..-2]
 
     send toRemove, callbackQueue, @_subClient, method, callback
 
