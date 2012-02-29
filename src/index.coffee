@@ -1,7 +1,6 @@
+{EventEmitter} = require 'events'
 redis = require 'redis'
-transaction = null
-pathRegExp = null
-hasKeys = null
+transaction = pathRegExp = hasKeys = null
 
 module.exports = (racer) ->
   {transaction} = racer
@@ -13,7 +12,8 @@ PubSubRedis = (options = {}) ->
   self = this
   {port, host, db, password} = options
   namespace = (db || 0) + '.'
-  @_prefixWithNamespace = (path) -> namespace + path
+  @_prefix = (path) -> namespace + path
+  @_unprefix = (path) -> path.slice namespace.length
 
   @_pubClient = pubClient = redis.createClient port, host, options
   @_subClient = subClient = redis.createClient port, host, options
@@ -39,20 +39,20 @@ PubSubRedis = (options = {}) ->
       console.log "PMESSAGE #{pattern} #{channel} #{message}"
     @__publish = PubSubRedis::publish
     @publish = (path, message) ->
-      console.log "PUBLISH #{@_prefixWithNamespace path} #{JSON.stringify message}"
+      console.log "PUBLISH #{@_prefix path} #{JSON.stringify message}"
       @__publish path, message
 
   subClient.on 'message', (path, message) ->
     if subs = pathSubs[path]
       message = JSON.parse message
       for subscriberId of subs
-        self.onMessage subscriberId, message
+        self.emit 'message', subscriberId, message
 
   subClient.on 'pmessage', (pattern, path, message) ->
     if subs = patternSubs[pattern]
       message = JSON.parse message
       for subscriberId, re of subs
-        self.onMessage subscriberId, message  if re.test path
+        self.emit 'message', subscriberId, message  if re.test path
 
   # Redis doesn't support callbacks on subscribe or unsubscribe methods, so
   # we call the callback after subscribe/unsubscribe events are published on
@@ -61,8 +61,7 @@ PubSubRedis = (options = {}) ->
     subClient.on event, (path, subscriberCount) ->
       if pending = queue[path]
         if obj = pending.shift()
-          obj.out[path] = subscriberCount
-          --obj.count || obj.callback null, obj.out
+          --obj.count || obj.callback()
       return
 
   makeCallback @_pendingPsubscribe = {}, 'psubscribe'
@@ -74,15 +73,14 @@ PubSubRedis = (options = {}) ->
 
 PubSubRedis:: =
 
-  onMessage: ->
+  __proto__: EventEmitter::
 
   disconnect: ->
     @_pubClient.end()
     @_subClient.end()
 
   publish: (path, message) ->
-    path = @_prefixWithNamespace path
-    @_pubClient.publish path, JSON.stringify message
+    @_pubClient.publish @_prefix(path), JSON.stringify(message)
 
   subscribe: (subscriberId, paths, callback, isLiteral) ->
     return if subscriberId is undefined
@@ -101,16 +99,16 @@ PubSubRedis:: =
     toAdd = []
     ss = subscriberSubs[subscriberId] ||= {}
     for path in paths
-      path = @_prefixWithNamespace path
+      prefixed = @_prefix path
       if isLiteral
         value = true
       else
-        value = pathRegExp path
-        path += '*'
+        value = pathRegExp prefixed
+        prefixed += '*'
 
-      toAdd.push path
-      s = subs[path] ||= {}
-      s[subscriberId] = ss[path] = value
+      toAdd.push prefixed
+      s = subs[prefixed] ||= {}
+      s[subscriberId] = ss[prefixed] = value
 
     send toAdd, callbackQueue, @_subClient, method, callback
 
@@ -129,18 +127,19 @@ PubSubRedis:: =
       subscriberSubs = @_subscriberPatternSubs
 
     ss = subscriberSubs[subscriberId]
-    if paths
-      toRemove = []
-      delete ss[path]  if ss
-      for path in paths
-        path = @_prefixWithNamespace path
-        path += '*' unless isLiteral
-        if s = subs[path]
-          delete s[subscriberId]
-          toRemove.push path  unless hasKeys pathSubs
-
+    paths = if paths
+      (if isLiteral then @_prefix(path) + '*' else @_prefix(path)  for path in paths)
     else
-      toRemove = (ss && Object.keys ss) || []
+      (ss && Object.keys ss) || []
+
+    toRemove = []
+    for prefixed in paths
+      delete ss[prefixed]  if ss
+      if s = subs[prefixed]
+        delete s[subscriberId]
+        unless hasKeys s
+          toRemove.push prefixed
+          @emit 'noSubscribers', @_unprefix prefixed
 
     send toRemove, callbackQueue, @_subClient, method, callback
 
@@ -148,7 +147,7 @@ PubSubRedis:: =
     (subscriberId of @_subscriberPatternSubs) || (subscriberId of @_subscriberPathSubs)
 
   subscribedToTxn: (subscriberId, txn) ->
-    path = @_prefixWithNamespace transaction.path txn
+    path = @_prefix transaction.path txn
     for p, re of @_subscriberPatternSubs[subscriberId]
       return true if re.test path
     return false
@@ -156,7 +155,7 @@ PubSubRedis:: =
 send = (paths, queue, client, method, callback) ->
   return callback?()  unless i = paths.length
 
-  obj = {callback, out: {}, count: 1}  if callback
+  obj = {callback, count: i}  if callback
   while i--
     path = paths[i]
     (queue[path] ||= []).push obj  if callback
