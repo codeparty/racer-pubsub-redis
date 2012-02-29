@@ -23,8 +23,10 @@ PubSubRedis = (options = {}) ->
     pubClient.auth password, throwOnErr
     subClient.auth password, throwOnErr
 
-  @_subs = subs = {}
-  @_subscriberSubs = {}
+  @_pathSubs = pathSubs = {}
+  @_patternSubs = patternSubs = {}
+  @_subscriberPathSubs = {}
+  @_subscriberPatternSubs = {}
 
   if options.debug
     for event in ['subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe']
@@ -40,27 +42,29 @@ PubSubRedis = (options = {}) ->
       console.log "PUBLISH #{@_prefixWithNamespace path} #{JSON.stringify message}"
       @__publish path, message
 
-  subClient.on 'pmessage', (pattern, path, message) ->
-    # The pattern returned will have an extra * on the end
-    if pathSubs = subs[pattern.substr(0, pattern.length - 1)]
-      message = JSON.parse message
-      for subscriberId, re of pathSubs
-        self.onMessage subscriberId, message if re.test path
-
   subClient.on 'message', (path, message) ->
-    if pathSubs = subs[path]
+    if subs = pathSubs[path]
       message = JSON.parse message
-      for subscriberId of pathSubs
+      for subscriberId of subs
         self.onMessage subscriberId, message
+
+  subClient.on 'pmessage', (pattern, path, message) ->
+    if subs = patternSubs[pattern]
+      message = JSON.parse message
+      for subscriberId, re of subs
+        self.onMessage subscriberId, message  if re.test path
 
   # Redis doesn't support callbacks on subscribe or unsubscribe methods, so
   # we call the callback after subscribe/unsubscribe events are published on
   # each of the paths for a given call of subscribe/unsubscribe.
   makeCallback = (queue, event) ->
-    subClient.on event, (path) ->
+    subClient.on event, (path, subscriberCount) ->
       if pending = queue[path]
-        if callback = pending.shift()
-          callback() unless --callback.__count
+        if obj = pending.shift()
+          obj.out[path] = subscriberCount
+          --obj.count || obj.callback null, obj.out
+      return
+
   makeCallback @_pendingPsubscribe = {}, 'psubscribe'
   makeCallback @_pendingPunsubscribe = {}, 'punsubscribe'
   makeCallback @_pendingSubscribe = {}, 'subscribe'
@@ -83,73 +87,77 @@ PubSubRedis:: =
   subscribe: (subscriberId, paths, callback, isLiteral) ->
     return if subscriberId is undefined
 
-    subs = @_subs
-    subscriberSubs = @_subscriberSubs
-    toAdd = []
-    for path in paths
-      path = @_prefixWithNamespace path
-      unless pathSubs = subs[path]
-        subs[path] = pathSubs = {}
-        toAdd.push path
-      re = pathRegExp path
-      pathSubs[subscriberId] = re
-      ss = subscriberSubs[subscriberId] ||= {}
-      ss[path] = re
-
     if isLiteral
       method = 'subscribe'
       callbackQueue = @_pendingSubscribe
+      subs = @_pathSubs
+      subscriberSubs = @_subscriberPathSubs
     else
       method = 'psubscribe'
       callbackQueue = @_pendingPsubscribe
-    handlePaths toAdd, callbackQueue, @_subClient, method, callback
+      subs = @_patternSubs
+      subscriberSubs = @_subscriberPatternSubs
+
+    toAdd = []
+    ss = subscriberSubs[subscriberId] ||= {}
+    for path in paths
+      path = @_prefixWithNamespace path
+      if isLiteral
+        value = true
+      else
+        value = pathRegExp path
+        path += '*'
+
+      toAdd.push path
+      s = subs[path] ||= {}
+      s[subscriberId] = ss[path] = value
+
+    send toAdd, callbackQueue, @_subClient, method, callback
 
   unsubscribe: (subscriberId, paths, callback, isLiteral) ->
     return if subscriberId is undefined
 
-    # For signature: unsubscribe(subscriberId, callback)
-    if typeof paths is 'function'
-      callback = paths
-      paths = null
-
-    # For signature: unsubscribe(subscriberId[, callback])
-    subscriberSubs = @_subscriberSubs
-    paths ||= subscriberSubs[subscriberId] || []
-
-    # For signature: unsubscribe(subscriberId, paths[, callback])
-    subs = @_subs
-    toRemove = []
-    for path in paths
-      path = @_prefixWithNamespace path
-      if pathSubs = subs[path]
-        delete pathSubs[subscriberId]
-        toRemove.push path unless hasKeys pathSubs
-      delete ss[path] if ss = subscriberSubs[subscriberId]
-
     if isLiteral
-      method = 'subscribe'
-      callbackQueue = @_pendingSubscribe
+      method = 'unsubscribe'
+      callbackQueue = @_pendingUnsubscribe
+      subs = @_pathSubs
+      subscriberSubs = @_subscriberPathSubs
     else
-      method = 'psubscribe'
-      callbackQueue = @_pendingPsubscribe
-    handlePaths toRemove, callbackQueue,  @_subClient, method, callback
+      method = 'punsubscribe'
+      callbackQueue = @_pendingPunsubscribe
+      subs = @_patternSubs
+      subscriberSubs = @_subscriberPatternSubs
 
-  hasSubscriptions: (subscriberId) -> subscriberId of @_subscriberSubs
+    ss = subscriberSubs[subscriberId]
+    if paths
+      toRemove = []
+      delete ss[path]  if ss
+      for path in paths
+        path = @_prefixWithNamespace path
+        path += '*' unless isLiteral
+        if s = subs[path]
+          delete s[subscriberId]
+          toRemove.push path  unless hasKeys pathSubs
+
+    else
+      toRemove = (ss && Object.keys ss) || []
+
+    send toRemove, callbackQueue, @_subClient, method, callback
+
+  hasSubscriptions: (subscriberId) ->
+    (subscriberId of @_subscriberPatternSubs) || (subscriberId of @_subscriberPathSubs)
 
   subscribedToTxn: (subscriberId, txn) ->
     path = @_prefixWithNamespace transaction.path txn
-    for p, re of @_subscriberSubs[subscriberId]
-      return true if p == path || re.test path
+    for p, re of @_subscriberPatternSubs[subscriberId]
+      return true if re.test path
     return false
 
-handlePaths = (paths, queue, client, fn, callback) ->
-  if i = paths.length
-    callback.__count = i if callback
-  else
-    callback() if callback
+send = (paths, queue, client, method, callback) ->
+  return callback?()  unless i = paths.length
+
+  obj = {callback, out: {}, count: 1}  if callback
   while i--
     path = paths[i]
-    path += '*' if fn == 'psubscribe'
-    client[fn] path
-    if callback
-      (queue[path] ||= []).push callback
+    (queue[path] ||= []).push obj  if callback
+    client[method] path
