@@ -1,1 +1,1 @@
-require('racer/test/util/pubSubAdapter') {type: 'Redis'}, require('../src')
+require('racer/test/pubSubAdapter') {type: 'Redis'}, require('../src')

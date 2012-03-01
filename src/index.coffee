@@ -1,9 +1,8 @@
 {EventEmitter} = require 'events'
 redis = require 'redis'
-transaction = pathRegExp = hasKeys = null
+pathRegExp = hasKeys = null
 
 module.exports = (racer) ->
-  {transaction} = racer
   {regExp: pathRegExp} = racer.path
   {hasKeys} = racer.util
   racer.adapters.pubSub.Redis = PubSubRedis
@@ -49,10 +48,10 @@ PubSubRedis = (options = {}) ->
         self.emit 'message', subscriberId, message
 
   subClient.on 'pmessage', (pattern, path, message) ->
-    if subs = patternSubs[pattern]
+    if (subs = patternSubs[pattern]) && subsMatchPath subs, path
       message = JSON.parse message
-      for subscriberId, re of subs
-        self.emit 'message', subscriberId, message  if re.test path
+      for subscriberId of subs
+        self.emit 'message', subscriberId, message
 
   # Redis doesn't support callbacks on subscribe or unsubscribe methods, so
   # we call the callback after subscribe/unsubscribe events are published on
@@ -72,7 +71,6 @@ PubSubRedis = (options = {}) ->
   return
 
 PubSubRedis:: =
-
   __proto__: EventEmitter::
 
   disconnect: ->
@@ -83,8 +81,6 @@ PubSubRedis:: =
     @_pubClient.publish @_prefix(path), JSON.stringify(message)
 
   subscribe: (subscriberId, paths, callback, isLiteral) ->
-    return if subscriberId is undefined
-
     if isLiteral
       method = 'subscribe'
       callbackQueue = @_pendingSubscribe
@@ -113,8 +109,6 @@ PubSubRedis:: =
     send toAdd, callbackQueue, @_subClient, method, callback
 
   unsubscribe: (subscriberId, paths, callback, isLiteral) ->
-    return if subscriberId is undefined
-
     if isLiteral
       method = 'unsubscribe'
       callbackQueue = @_pendingUnsubscribe
@@ -138,6 +132,7 @@ PubSubRedis:: =
       if s = subs[prefixed]
         delete s[subscriberId]
         unless hasKeys s
+          delete subs[prefixed]
           toRemove.push prefixed
           @emit 'noSubscribers',
             if isLiteral then @_unprefix(prefixed) else @_unprefix(prefixed)[0..-2]
@@ -147,11 +142,12 @@ PubSubRedis:: =
   hasSubscriptions: (subscriberId) ->
     (subscriberId of @_subscriberPatternSubs) || (subscriberId of @_subscriberPathSubs)
 
-  subscribedToTxn: (subscriberId, txn) ->
-    path = @_prefix transaction.path txn
+  subscribedTo: (subscriberId, path) ->
+    path = @_prefix path
     for p, re of @_subscriberPatternSubs[subscriberId]
       return true if re.test path
     return false
+
 
 send = (paths, queue, client, method, callback) ->
   return callback?()  unless i = paths.length
@@ -161,3 +157,7 @@ send = (paths, queue, client, method, callback) ->
     path = paths[i]
     (queue[path] ||= []).push obj  if callback
     client[method] path
+
+subsMatchPath = (subs, path) ->
+  for subscriberId, re of subs
+    return re.test path
