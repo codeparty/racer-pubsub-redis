@@ -8,7 +8,6 @@ module.exports = (racer) ->
   racer.adapters.pubSub.Redis = PubSubRedis
 
 PubSubRedis = (options = {}) ->
-  self = this
   {port, host, db, password} = options
   namespace = (db || 0) + '.'
   @_prefix = (path) -> namespace + path
@@ -41,17 +40,17 @@ PubSubRedis = (options = {}) ->
       console.log "PUBLISH #{@_prefix path} #{JSON.stringify message}"
       @__publish path, message
 
-  subClient.on 'message', (path, message) ->
+  subClient.on 'message', (path, message) =>
     if subs = pathSubs[path]
       message = JSON.parse message
       for subscriberId of subs
-        self.emit 'message', subscriberId, message
+        @emit 'message', subscriberId, message
 
-  subClient.on 'pmessage', (pattern, path, message) ->
+  subClient.on 'pmessage', (pattern, path, message) =>
     if (subs = patternSubs[pattern]) && subsMatchPath subs, path
       message = JSON.parse message
       for subscriberId of subs
-        self.emit 'message', subscriberId, message
+        @emit 'message', subscriberId, message
 
   # Redis doesn't support callbacks on subscribe or unsubscribe methods, so
   # we call the callback after subscribe/unsubscribe events are published on
