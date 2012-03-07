@@ -121,7 +121,8 @@ PubSubRedis:: =
 
     ss = subscriberSubs[subscriberId]
     paths = if paths
-      (if isLiteral then @_prefix(path) + '*' else @_prefix(path)  for path in paths)
+      for path in paths
+        if isLiteral then @_prefix(path) else @_prefix(path) + '*'
     else
       (ss && Object.keys ss) || []
 
