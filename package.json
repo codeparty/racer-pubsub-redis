@@ -1,7 +1,7 @@
 {
   "name": "racer-pubsub-redis",
   "description": "Redis PubSub plugin for Racer",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "main": "./lib/index.js",
   "dependencies": {
     "redis": ">=0.7.1"
@@ -11,5 +11,6 @@
   },
   "engines": {
     "node": ">=0.4.0"
-  }
+  },
+  "optionalDependencies": {}
 }
