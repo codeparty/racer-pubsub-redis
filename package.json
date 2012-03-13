@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "main": "./lib/index.js",
   "dependencies": {
-    "redis": ">=0.7.1"
+    "redis": "https://github.com/bnoguchi/node_redis/tarball/pub_sub_mode-fix"
   },
   "devDependencies": {
     "racer": ">=0.1.9"

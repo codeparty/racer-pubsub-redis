@@ -8,6 +8,7 @@ module.exports = (racer) ->
   racer.adapters.pubSub.Redis = PubSubRedis
 
 PubSubRedis = (options = {}) ->
+  EventEmitter.call this
   {port, host, db, password} = options
   namespace = (db || 0) + '.'
   @_prefix = (path) -> namespace + path
@@ -21,16 +22,22 @@ PubSubRedis = (options = {}) ->
     pubClient.auth password, throwOnErr
     subClient.auth password, throwOnErr
 
+  # path -> (namespace + path -> (subscriberId -> true))
   @_pathSubs = pathSubs = {}
+
+  # pattern -> (ns + path + '*' -> (subscriberId -> RegExp))
   @_patternSubs = patternSubs = {}
+
+  # subscriberId -> (namespace + path -> true)
   @_subscriberPathSubs = {}
+
+  # subscriberId -> (namespace + path + '*' -> RegExp)
   @_subscriberPatternSubs = {}
 
   if options.debug
-    for event in ['subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe']
-      do (event) ->
-        subClient.on event, (path, count) ->
-          console.log "#{event.toUpperCase()} #{path} COUNT = #{count}"
+    ['subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe'].forEach (event) ->
+      subClient.on event, (path, count) ->
+        console.log "#{event.toUpperCase()} #{path} COUNT = #{count}"
     subClient.on 'message', (channel, message) ->
       console.log "MESSAGE #{channel} #{message}"
     subClient.on 'pmessage', (pattern, channel, message) ->
@@ -45,27 +52,29 @@ PubSubRedis = (options = {}) ->
       message = JSON.parse message
       for subscriberId of subs
         @emit 'message', subscriberId, message
+    return
 
   subClient.on 'pmessage', (pattern, path, message) =>
     if (subs = patternSubs[pattern]) && subsMatchPath subs, path
       message = JSON.parse message
       for subscriberId of subs
         @emit 'message', subscriberId, message
+    return
 
   # Redis doesn't support callbacks on subscribe or unsubscribe methods, so
   # we call the callback after subscribe/unsubscribe events are published on
   # each of the paths for a given call of subscribe/unsubscribe.
-  makeCallback = (queue, event) ->
-    subClient.on event, (path, subscriberCount) ->
+  makeCallback = (queue) ->
+    return (path, subscriberCount) ->
       if pending = queue[path]
         if obj = pending.shift()
           --obj.count || obj.callback()
       return
 
-  makeCallback @_pendingPsubscribe = {}, 'psubscribe'
-  makeCallback @_pendingPunsubscribe = {}, 'punsubscribe'
-  makeCallback @_pendingSubscribe = {}, 'subscribe'
-  makeCallback @_pendingUnsubscribe = {}, 'unsubscribe'
+  subClient.on 'psubscribe', makeCallback(@_pendingPsubscribe = {})
+  subClient.on 'punsubscribe', makeCallback(@_pendingPunsubscribe = {})
+  subClient.on 'subscribe', makeCallback(@_pendingSubscribe = {})
+  subClient.on 'unsubscribe', makeCallback(@_pendingUnsubscribe = {})
 
   return
 
@@ -129,13 +138,15 @@ PubSubRedis:: =
     toRemove = []
     for prefixed in paths
       delete ss[prefixed]  if ss
-      if s = subs[prefixed]
-        delete s[subscriberId]
-        unless hasKeys s
-          delete subs[prefixed]
-          toRemove.push prefixed
-          @emit 'noSubscribers',
-            if isLiteral then @_unprefix(prefixed) else @_unprefix(prefixed)[0..-2]
+      continue unless s = subs[prefixed]
+
+      delete s[subscriberId]
+      continue if hasKeys s
+
+      delete subs[prefixed]
+      toRemove.push prefixed
+      @emit 'noSubscribers',
+        if isLiteral then @_unprefix(prefixed) else @_unprefix(prefixed)[0..-2]
 
     send toRemove, callbackQueue, @_subClient, method, callback
 
@@ -144,9 +155,8 @@ PubSubRedis:: =
 
   subscribedTo: (subscriberId, path) ->
     path = @_prefix path
-    for p, re of @_subscriberPatternSubs[subscriberId]
-      return true if re.test path
-    return false
+    subs = @_subscriberPatternSubs[subscriberId]
+    return subsMatchPath subs, path
 
 
 send = (paths, queue, client, method, callback) ->
@@ -160,4 +170,5 @@ send = (paths, queue, client, method, callback) ->
 
 subsMatchPath = (subs, path) ->
   for subscriberId, re of subs
-    return re.test path
+    return true if re.test path
+  return false
