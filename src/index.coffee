@@ -2,10 +2,12 @@
 redis = require 'redis'
 pathRegExp = hasKeys = null
 
-module.exports = (racer) ->
-  {regExp: pathRegExp} = racer.path
+exports = module.exports = (racer) ->
+  pathRegExp = racer.path.regExp
   {hasKeys} = racer.util
   racer.adapters.pubSub.Redis = PubSubRedis
+
+exports.useWith = server: true, browser: false
 
 PubSubRedis = (options = {}) ->
   EventEmitter.call this

@@ -3,6 +3,9 @@
   "description": "Redis PubSub plugin for Racer",
   "version": "0.0.1",
   "main": "./lib/index.js",
+  "scripts": {
+    "prepublish": "./scripts/prepublish"
+  },
   "dependencies": {
     "redis": "https://github.com/bnoguchi/node_redis/tarball/pub_sub_mode-fix"
   },
