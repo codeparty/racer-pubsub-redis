@@ -5,7 +5,7 @@ pathRegExp = hasKeys = null
 exports = module.exports = (racer) ->
   pathRegExp = racer.path.regExp
   {hasKeys} = racer.util
-  racer.adapters.pubSub.Redis = PubSubRedis
+  racer.registerAdapter 'pubSub', 'Redis', PubSubRedis
 
 exports.useWith = server: true, browser: false
 
