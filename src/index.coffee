@@ -1,10 +1,10 @@
 {EventEmitter} = require 'events'
 redis = require 'redis'
 pathRegExp = hasKeys = null
+pathRegExp = require('racer/lib/path').regExp
+{hasKeys} = require 'racer/lib/util'
 
 exports = module.exports = (racer) ->
-  pathRegExp = racer.path.regExp
-  {hasKeys} = racer.util
   racer.registerAdapter 'pubSub', 'Redis', PubSubRedis
 
 exports.useWith = server: true, browser: false
