@@ -1,9 +1,10 @@
 racer = require 'racer/lib/racer'
 shouldBehaveLikePubSubAdapter = require 'racer/test/pubSubAdapter'
 
+storeOpts = {}
 plugin = require '../src'
+plugin.testOpts = pattern: true, prefix: true, string: true
 
-options = pubSub: type: 'Redis'
 
 describe 'Redis PubSub adapter', ->
-  shouldBehaveLikePubSubAdapter options, [plugin]
+  shouldBehaveLikePubSubAdapter storeOpts, [plugin]
