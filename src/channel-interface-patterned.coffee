@@ -15,7 +15,7 @@ module.exports = ({ns}) ->
     # subscriberId -> (ns + channel + '*' -> RegExp)
     reverseIndex = {}
 
-    interface = {}
+    intf = {}
 
     subClient.on 'pmessage', (nsPatternStar, str, payload) ->
       return unless subs = forwardIndex[nsPatternStar]
@@ -52,7 +52,7 @@ module.exports = ({ns}) ->
         clearTimeout ack.timeout
         ack.cb null
 
-    interface.subscribe = (subscriberId, pattern, ackCb) ->
+    intf.subscribe = (subscriberId, pattern, ackCb) ->
       re = pathRegExp pattern
       nsPattern = prefix(ns + '$' + pattern)
       nsPatternStar = nsPattern + '*'
@@ -79,7 +79,7 @@ module.exports = ({ns}) ->
         subsForPattern.subscribers[subscriberId] = true
         ackCb? null
 
-    interface.unsubscribe = (subscriberId, pattern, ackCb) ->
+    intf.unsubscribe = (subscriberId, pattern, ackCb) ->
       if typeof pattern isnt 'string'
         # Unsubscribe this subscriberId from all patterns
         ackCb = pattern
@@ -156,17 +156,17 @@ module.exports = ({ns}) ->
 
       return
 
-    interface.publish = ({type, params}) ->
+    intf.publish = ({type, params}) ->
       switch type
         when 'txn', 'ot'
           pubClient.publish prefix(ns + '$' + params.channel), JSON.stringify {type, data: params.data}
 
-    interface.hasSubscriptions = (subscriberId) -> subscriberId of reverseIndex
+    intf.hasSubscriptions = (subscriberId) -> subscriberId of reverseIndex
 
     # TODO `path` is specific to our use of subscribedTo. Generalize it
-    interface.subscribedTo = (subscriberId, path) ->
+    intf.subscribedTo = (subscriberId, path) ->
       for _, re of reverseIndex[subscriberId]
         return true if re.test path
       return false
 
-    return interface
+    return intf
