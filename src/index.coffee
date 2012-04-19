@@ -29,11 +29,11 @@ exports = module.exports = (racer, options = {}) ->
           subClient.end()
 
         if options.pattern
-          pubSub.defChannelInterface 'pattern', patternInterface pubSub, subClient, pubClient, prefix, unprefix
+          pubSub.addChannelInterface 'pattern', patternInterface pubSub, subClient, pubClient, prefix, unprefix
         if options.prefix
-          pubSub.defChannelInterface 'prefix', prefixInterface pubSub, subClient, pubClient, prefix, unprefix
+          pubSub.addChannelInterface 'prefix', prefixInterface pubSub, subClient, pubClient, prefix, unprefix
         if options.string
-          pubSub.defChannelInterface 'string', stringInterface pubSub, subClient, pubClient, prefix, unprefix
+          pubSub.addChannelInterface 'string', stringInterface pubSub, subClient, pubClient, prefix, unprefix
 
         if options.debug
           ['subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe'].forEach (event) ->
