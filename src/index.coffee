@@ -1,16 +1,16 @@
 redis = require 'redis'
-patternInterface = require './channel-interface-pattern'
-prefixInterface = require './channel-interface-prefix'
+patterned = require './channel-interface-patterned'
 stringInterface = require './channel-interface-string'
 
-exports = module.exports = (racer, opts = {}) ->
+exports = module.exports = (racer, options = {}) ->
+  {patternInterface, prefixInterface} = patterned racer
   racer.mixin
     type: 'Store'
     events:
       init: (store) ->
-        {port, host, db, password} = opts
-        subClient = redis.createClient port, host, opts
-        pubClient = redis.createClient port, host, opts
+        {port, host, db, password} = options
+        subClient = redis.createClient port, host, options
+        pubClient = redis.createClient port, host, options
 
         if password
           throwOnErr = (err) => throw err if err
@@ -28,14 +28,14 @@ exports = module.exports = (racer, opts = {}) ->
           pubClient.end()
           subClient.end()
 
-        if opts.pattern
+        if options.pattern
           pubSub.defChannelInterface 'pattern', patternInterface pubSub, subClient, pubClient, prefix, unprefix
-        if opts.prefix
+        if options.prefix
           pubSub.defChannelInterface 'prefix', prefixInterface pubSub, subClient, pubClient, prefix, unprefix
-        if opts.string
+        if options.string
           pubSub.defChannelInterface 'string', stringInterface pubSub, subClient, pubClient, prefix, unprefix
 
-        if opts.debug
+        if options.debug
           ['subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe'].forEach (event) ->
             subClient.on event, (channel, count) ->
               console.log "#{event.toUpperCase()} #{channel} COUNT = #{count}"
@@ -47,7 +47,6 @@ exports = module.exports = (racer, opts = {}) ->
           subClient.publish = (channel, msg) ->
             console.log "PUBLISH #{channel} #{JSON.stringify message}"
             __publish.call subClient, channel, message
-
 
   return
 

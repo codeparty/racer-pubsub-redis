@@ -1,11 +1,18 @@
-{finishAfter} = require 'racer/lib/util/async'
-{hasKeys} = require 'racer/lib/util'
-{regExp: pathRegExp} = require 'racer/lib/path'
 {EventEmitter} = require 'events'
+finishAfter = hasKeys = pathRegExp = null
 
 ACK_TIMEOUT_MS = 1000
 
-module.exports = ({ns}) ->
+module.exports = (racer) ->
+  finishAfter = racer.util.async.finishAfter
+  hasKeys = racer.util.hasKeys
+  pathRegExp = racer.protected.path.regExp
+  return {
+    prefixInterface: patternedInterface 'prefix'
+    patternInterface: patternedInterface 'pattern'
+  }
+
+patternedInterface = (ns) ->
   # TODO Rm unprefix if we never use it
   return (pubSub, subClient, pubClient, prefix, unprefix) ->
 
