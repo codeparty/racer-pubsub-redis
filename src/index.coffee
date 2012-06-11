@@ -51,3 +51,4 @@ exports = module.exports = (racer, options = {}) ->
   return
 
 exports.useWith = server: true, browser: false
+exports.decorate = 'racer'
