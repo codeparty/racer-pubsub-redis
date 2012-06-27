@@ -10,7 +10,7 @@
     "redis": "https://github.com/bnoguchi/node_redis/tarball/pub_sub_mode-fix"
   },
   "devDependencies": {
-    "racer": ">=0.3.1"
+    "racer": ">=0.3.11"
   },
   "engines": {
     "node": ">=0.4.0"
