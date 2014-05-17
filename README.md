@@ -1,6 +1,4 @@
-# Redis PubSub plugin for Racer
-
-See **http://racerjs.com/**
+DEPRECATED. DO NOT USE.
 
 ## MIT License
 Copyright (c) 2011 by Nate Smith and Brian Noguchi
